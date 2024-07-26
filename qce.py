@@ -43,7 +43,7 @@ def kron_N_A(A, N): # fast kron(eye(N), A)
 
 def trace_distance(A, B):
     sub = A - B
-    return trace(sqrtm(dot(sub.conj().T, sub))).real / 2
+    return trace(sqrtm(dot(sub.conj().T, sub))).real/2
 
 def fidelity(A, B):
     res = reduce(dot, [sqrtm(A), B, sqrtm(A)])
@@ -51,7 +51,7 @@ def fidelity(A, B):
     return trace(res).real**2
 
 def sup_fidelity(A, B):
-    """ An upper bound for the usual fidelity """
+    """ An upper bound for the usual fidelity. """
     t1 = trace(A@B).real
     t2 = max(0, 1 - trace(A@A).real)
     t3 = max(0, 1 - trace(B@B).real)
@@ -126,7 +126,7 @@ def prev_to_next_ansatz(pars, n_tot_p, n_meas_p, n_layers_p, n_tot_n, n_meas_n, 
 
 
 def gen_even_ent_data(n, n_inp=2, mixed=True, marks="neg", n_chunks=100):
-    """ Generates a data set of states with evenly distributed entanglements """
+    """ Generates a data set of states with evenly distributed entanglements. """
     
     d = 2**n_inp
     
@@ -166,21 +166,24 @@ def gen_even_ent_data(n, n_inp=2, mixed=True, marks="neg", n_chunks=100):
 # quantum state generators # 
 
 def rand_sv(n_qubits):
+    """ Generates a random pure state as a vector. """
     d = 2**n_qubits
     sv = uniform(-1, 1, d) + 1j*uniform(-1, 1, d)
     return sv/norm(sv)
 
 def rand_dm(n_qubits):
+    """ Generates a random mixed state as a full-rank density matrix. """
     d = 2**n_qubits
     H = uniform(-1, 1, [d, d]) + 1j*uniform(-1, 1, [d, d])
     dm = H@H.conj().T
     dm = dm/trace(dm).real
     return dm
-  
+
 
 # Fisher informations #
 
 def cfi(channel_func, dm, p, channel_args, povm, n_copies=1, n_ext=0, dp=1e-5):
+    """ Computes classical Fisher information. Only for channels! """
     dm_n = reduce(kron, [channel_func(dm, p, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     dm_n_p = reduce(kron, [channel_func(dm, p+dp, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     dm_n_m = reduce(kron, [channel_func(dm, p-dp, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
@@ -195,18 +198,21 @@ def cfi(channel_func, dm, p, channel_args, povm, n_copies=1, n_ext=0, dp=1e-5):
     return fi
 
 def qfi(channel_func, dm, p, channel_args, n_copies=1, n_ext=0, dp=1e-2):
+    """ Computes quantum Fisher information. Only for channels! """
     dm_n = reduce(kron, [channel_func(dm, p, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     dm_n_p = reduce(kron, [channel_func(dm, p+dp, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     fi = 8*(1 - sqrt(fidelity(dm_n, dm_n_p))) / dp**2
     return fi
 
 def qfi_central(channel_func, dm, p, channel_args, n_copies=1, n_ext=0, dp=1e-2):
+    """ Computes quantum Fisher information via "central differences". Only for channels! """
     dm_n_p = reduce(kron, [channel_func(dm, p+dp, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     dm_n_m = reduce(kron, [channel_func(dm, p-dp, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     fi = 8*(1 - sqrt(fidelity(dm_n_m, dm_n_p))) / dp**2/4
     return fi
 
 def sup_qfi(channel_func, dm, p, channel_args, n_copies=1, n_ext=0, dp=1e-5):
+    """ Computes an upper bound (?) for quantum Fisher information. Only for channels! """
     dm_n = reduce(kron, [channel_func(dm, p, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     dm_n_p = reduce(kron, [channel_func(dm, p+dp, *channel_args)]*n_copies + [diag([1] + [0]*(2**(n_ext) - 1))])
     fi = 8*(1 - sqrt(sup_fidelity(dm_n, dm_n_p))) / dp**2
@@ -217,6 +223,7 @@ def sld(channel_func, channel_par, channel_args, dm_ini, n_copies=1, n_ext=0, dp
     """
         Numerically finds the SLD operator L.
         Optionally returns the classical and quantum Fisher informations.
+        Only for channels!
     """
     
     n_inp = int(log2(len(dm_ini)))*n_copies
@@ -250,6 +257,7 @@ def sld(channel_func, channel_par, channel_args, dm_ini, n_copies=1, n_ext=0, dp
         return L, CFI, QFI
     else:
         return L
+        
 
 ### channels ###
 
@@ -341,7 +349,24 @@ def Z_rotations(dm, p):
     U = expm(-1j*p*op)
     return reduce(dot, [U, dm, U.conj().T])
 
+def z_rot(dm, p, target_qubit):
+    """
+        z-rotation of the specified qubit.
+        Mind the division by two!
+    """
+    n_qubits = int(log2(len(dm)))
+    dl = 2**target_qubit
+    dr = 2**(n_qubits - target_qubit - 1)
+    U = reduce(kron, [eye(dl), expm(-1j*p/2*Z), eye(dr)]) # inefficient
+    return U@dm@U.conj().T
+
+
 def random_channel(dm, p, pars, p_index, pauli_basis=None):
+    """
+        Random single-parametrized channel.
+        Attaches to a given n-qubit state dm a 2n-qubit pure state,
+        applies to the joint state a unitary with (4^(3n) - 1) parameters pars, one of which is the parameter p in question with the index p_index.        
+    """
     d = len(dm)
     n_inp = int(log2(d))
     n_ext = 2*n_inp
@@ -452,12 +477,18 @@ def cr_y(n_qubits, q1, q2, par):
 
 def cx(n_qubits, q1, q2):
     """ CX gate """
-    cx_1 = reduce(kron, [eye(2**q1), P0, np.eye(2**(n_qubits-q1-1))])
+    cx_1 = kron_N_A(P0, 2**q1)
+    cx_1 = kron_A_N(cx_1, 2**(n_qubits - q1 -1))
     if q2 > q1:
-        cx_2 = [eye(2**q1), P1, eye(2**(q2-q1-1)), X, eye(2**(n_qubits - q2 - 1))]
+        op_l = kron_N_A(P1, 2**q1)
+        op_l = kron_A_N(op_l, 2**(q2 - q1 - 1))
+        op_r = kron_A_N(X, 2**(n_qubits - q2 - 1))
+        cx_2 = kron(op_l, op_r)
     else:
-        cx_2 = [eye(2**q2), X, eye(2**(q1-q2-1)), P1, eye(2**(n_qubits - q1 - 1))]
-    cx_2 = reduce(kron, cx_2)
+        op_l = kron_N_A(X, 2**q2)
+        op_l = kron_A_N(op_l, 2**(q1 - q2 - 1))
+        op_r = kron_A_N(P1, 2**(n_qubits - q1 - 1))
+        cx_2 = kron(op_l, op_r)
     return cx_1 + cx_2
 
 def cx_cascade(n_qubits):
@@ -491,7 +522,7 @@ def hea_cry_rzrx(n_qubits, n_layers, pars):
 
 
 
-# measurers #    
+# measure #    
     
 def measure_povm(density_matrix, povm, outcomes, n_shots, return_probs=False):
     """
@@ -539,8 +570,354 @@ def measure_povm(density_matrix, povm, outcomes, n_shots, return_probs=False):
             return expectation_exper
 
 
+# estimate #
+
+def estimate(dms, labels, n_layers, pars, n_copies=1, n_meas=0, n_shots=1000, n_est=1):
+        
+    n_inp = int(log2(len(dms[0])))
+    n_tot = n_inp*n_copies
+    d = 2**n_tot
+
+    pars_ans = pars[:-2**n_meas]
+    pars_est = pars[-2**n_meas:]
+
+    ansatz = hea_cry_rzrx(n_tot, n_layers, pars_ans)
+    projs = [reduce(kron, [diag(line), eye(2**(n_tot - n_meas))]) for line in eye(2**n_meas)]
+    projs_u = [ansatz.conj().T@proj@ansatz for proj in projs]
+
+    dms_cop = [reduce(kron, [dm]*n_copies) for dm in dms]
+    
+    preds = []
+    errors = []
+    for e in range(n_est):
+        print("Estimation run: %d" %e, end="\r")
+        preds_e = []
+        errors_e = []
+        for j in range(len(dms)):
+            pred_j = measure_povm(dms_cop[j], projs_u, pars_est, n_shots)
+            error_j = (pred_j - labels[j])**2
+            preds_e.append(pred_j)
+            errors_e.append(error_j)
+        preds.append(array(preds_e))
+        errors.append(array(errors_e))
+        
+    return array(preds), array(errors)
+
+
+def estimate_pure(svs, labels, n_layers, pars, n_copies=1, n_meas=0, n_shots=1000, n_est=1):
+        
+    n_inp = int(log2(len(svs[0])))
+    n_tot = n_inp*n_copies
+    d = 2**n_tot
+    
+    if n_meas == 0:
+        n_meas = n_tot
+    
+    pars_ans = pars[:-2**n_meas]
+    pars_est = pars[-2**n_meas:]
+
+    # CXq = cx_cascade(n_tot)
+    # ansatz = hea_cx_rzrx(n_tot, n_layers, CXq, pars_ans)
+    ansatz = hea_cry_rzrx(n_tot, n_layers, pars_ans)
+    projs = [reduce(kron, [diag(line), eye(2**(n_tot - n_meas))]) for line in eye(2**n_meas)]
+    projs_u = [ansatz.conj().T@proj@ansatz for proj in projs]
+        
+    dms_cop = []
+    for sv in svs:
+        dm = outer(sv, sv.conj().T)
+        dms_cop.append(reduce(kron, [dm]*n_copies))
+        
+    preds = []
+    errors = []
+    for e in range(n_est):
+        print("Estimation run: %d" %e, end="\r")
+        preds_e = []
+        errors_e = []
+        for j in range(len(ham_pars)):
+            pred_j = measure_povm(dms[j], projs_u, pars_est, n_shots)
+            error_j = (array(pred_j) - array(ham_pars[j]))**2
+            preds_e.append(pred_j)
+            errors_e.append(error_j)
+        preds.append(array(preds_e))
+        errors.append(array(errors_e))
+        
+    return array(preds), array(errors)
+
+
+def estimate_naimark(dms, labels, n_layers, pars, n_copies=1, n_ext=1, n_shots=1000, n_est=1):
+
+    n_inp = int(log2(len(dms[0])))
+    n_tot = n_inp*n_copies + n_ext
+    d = 2**n_tot
+    
+    pars_ans = pars[:-2**n_ext]
+    pars_est = pars[-2**n_ext:]
+
+    ansatz = hea_cry_rzrx(n_tot, n_layers, pars_ans)
+    projs = [reduce(kron, [eye(2**n_inp), diag(line)]) for line in eye(2**n_ext)]
+    projs_u = [ansatz.conj().T@proj@ansatz for proj in projs]
+    
+    dms_cop = [reduce(kron, [dm]*n_copies + [P0]*n_ext) for dm in dms]
+    
+    preds = []
+    errors = []
+    for e in range(n_est):
+        print("Estimation run: %d" %e, end="\r")
+        preds_e = []
+        errors_e = []
+        for j in range(len(dms)):
+            pred_j = measure_povm(dms_cop[j], projs_u, pars_est, n_shots)
+            error_j = (pred_j - labels[j])**2
+            preds_e.append(pred_j)
+            errors_e.append(error_j)
+        preds.append(array(preds_e))
+        errors.append(array(errors_e))
+        
+    return array(preds), array(errors)
+
+    
 ### train ###
 
-# to be shared later #
+def train(dms, labels, n_layers, n_copies=1, n_meas=0, method="BFGS", w_ls=1e0, w_var=1e-4, x0=None, options={}, save_data=False, file_name=None):
+
+    n_inp = int(log2(len(dms[0])))
+    n_tot = n_inp*n_copies
+    d = 2**n_tot
+        
+    if n_meas == 0:
+        n_meas = n_tot
+    projs = [reduce(kron, [diag(line), eye(2**(n_tot - n_meas))]) for line in eye(2**n_meas)]
+                
+    n_pars_est = 2**n_meas
+    # n_pars_ans = 2*n_tot*(n_layers + 1) # cx
+    n_pars_ans = (3*n_tot - 1)*n_layers + 2*n_tot # cry  
+    
+    d_diff = 2**(n_tot - n_meas)
+    
+    # CX_cascade = cx_cascade(n_tot)
+    
+    dms_cop = [reduce(kron, [dm]*n_copies) for dm in dms]
+
+    fvals = []
+    fval_cont = [0]
+    def fun(x):
+        x_ans, x_est = x[:n_pars_ans], x[n_pars_ans:]
+        # ansatz = hea_cx_rzrx(n_tot, n_layers, CX_cascade, x_ans)
+        ansatz = hea_cry_rzrx(n_tot,n_layers, x_ans)
+        obs_u = ansatz.conj().T@kron_A_N(diag(x_est), d_diff)@ansatz
+        obs_u_sq = obs_u@obs_u
+        expecs = []
+        disps = []
+        for dm in dms_cop:
+            expecs.append(trace(dm@obs_u).real)
+            disps.append(trace(dm@obs_u_sq).real)
+        f = w_ls*np.sum((array(expecs) - array(labels))**2)
+        f += w_var*np.sum(array(disps) - array(expecs)**2)
+        fval_cont[0] = f
+        return f
+    
+    if file_name is None:
+        file_name = "pars-c=%d-m=%d=l=%d-w_ls=%f-w_var=%f-n_train=%d" %(n_copies, n_meas, n_layers, w_ls, w_var, len(labels))
+    
+    def callback(x):
+        fvals.append(fval_cont[0])
+        print("Iteration: %d | Function value: %.8f" %(len(fvals), fval_cont[0]), end="\r")
+        if save_data == True:
+            np.save(file_name, x)
+        return None
+    
+    if method in ["Nelder-Mead", "L-BFGS-B", "SLSQP", "TNC", "Powell", "COBYLA"]:
+        bounds = [(0, pi)]*n_pars_ans + [(-10, 10)]*n_pars_est
+    else:
+        bounds = None
+    if x0 is None:
+        x0_ans = normal(pi, 0.01*pi, n_pars_ans)
+        x0_est = normal(0, 0.01, n_pars_est)
+        x0 = concatenate([x0_ans, x0_est])
+    
+    optimization_result = minimize(fun=fun, x0=x0, bounds=bounds, method=method, callback=callback, options=options) # "maxiter": int(1e10)
+
+    return fvals, optimization_result
 
 
+def train_pure(svs, labels, n_layers, n_copies=1, n_meas=0, method="BFGS", w_ls=1e0, w_var=1e-4, x0=None, options={}, save_data=False, file_name=None):
+
+    n_inp = int(log2(len(svs[0])))
+    n_tot = n_inp*n_copies
+    d = 2**n_tot
+    if n_meas == 0:
+        n_meas = n_tot
+    d_diff = 2**(n_tot - n_meas)
+    
+    n_pars_est = 2**n_meas
+    n_pars_ans = (3*n_tot - 1)*n_layers + 2*n_tot      
+    # n_pars_ans = 2*n_tot*(n_layers + 1)    
+    # CXq = cx_cascade(n_tot)
+    
+    svs_cop = []
+    for sv in svs:
+        svs_cop.append(reduce(kron, [sv]*n_copies))
+
+    fvals = []
+    fval_cont = [0]
+    def fun(x):
+        x_ans, x_est = x[:n_pars_ans], x[n_pars_ans:]
+        ansatz = hea_cry_rzrx(n_tot, n_layers, x_ans)
+        # ansatz = hea_cx_rzrx(n_tot, n_layers, CXq, x_ans)
+        H_u = ansatz.conj().T@kron_A_N(diag(x_est), d_diff)@ansatz
+        expecs = []
+        disps = []
+        for j in range(len(labels)):
+            H_u_v0 = H_u@svs_cop[j]
+            expecs.append((svs_cop[j].conj().T@H_u_v0).real)
+            disps.append((H_u_v0.conj().T@H_u_v0).real)
+        f = w_ls*np.sum((array(expecs) - array(labels))**2)
+        f += w_var*np.sum(array(disps) - array(expecs)**2)
+        fval_cont[0] = f
+        return f    
+
+    if file_name is None:
+        file_name = "pars-c=%d-m=%d=l=%d-w_ls=%f-w_var=%f-n_train=%d" %(n_copies, n_meas, n_layers, w_ls, w_var, len(labels))
+    
+    def callback(x):
+        fvals.append(fval_cont[0])
+        print("Iteration: %d | Function value: %.8f" %(len(fvals), fval_cont[0]), end="\r")
+        if save_data == True:
+            np.save(file_name, x)
+        return None
+    
+    if method in ["Nelder-Mead", "L-BFGS-B", "SLSQP", "TNC", "Powell", "COBYLA"]:
+        bounds = [(0, 2*pi)]*n_pars_ans + [(None, None)]*n_pars_est
+    else:
+        bounds = None
+    if x0 is None:
+        x0_ans = normal(pi/4, 0.1*pi, n_pars_ans)
+        x0_est = normal(0, 1, n_pars_est)
+        x0 = concatenate([x0_ans, x0_est])
+    
+    optimization_result = minimize(fun=fun, x0=x0, callback=callback, bounds=bounds, method=method, options=options)
+
+    return fvals, optimization_result
+
+
+def train_naimark(dms, labels, n_layers, n_copies=1, n_ext=1, method="BFGS", w_ls=1e0, w_var=1e-4, x0=None, options={}, save_data=False, file_name=None):
+
+    n_inp = int(log2(len(dms[0])))
+    n_tot = n_inp*n_copies + n_ext
+    d_prim =  2**(n_inp*n_copies)
+
+    n_pars_ext = 2**n_ext
+    n_pars_ans = (3*n_tot - 1)*n_layers + 2*n_tot # cry  
+    
+    projs = [reduce(kron, [eye(2**n_inp), diag(line)]) for line in eye(n_pars_ext)]
+        
+    dms_cop = [reduce(kron, [dm]*n_copies + [P0]*n_ext) for dm in dms]
+
+    fvals = []
+    fval_cont = [0]
+    def fun(x):
+        x_ans, x_est = x[:n_pars_ans], x[n_pars_ans:]
+        ansatz = hea_cry_rzrx(n_tot,n_layers, x_ans)
+        obs_u = ansatz.conj().T@kron_N_A(diag(x_est), d_prim)@ansatz
+        obs_u_sq = obs_u@obs_u
+        expecs = []
+        disps = []
+        for dm in dms_cop:
+            expecs.append(trace(dm@obs_u).real)
+            disps.append(trace(dm@obs_u_sq).real)
+        f = w_ls*np.sum((array(expecs) - array(labels))**2)
+        f += w_var*np.sum(array(disps) - array(expecs)**2)
+        fval_cont[0] = f
+        return f
+    
+    if save_data == True and file_name is None:
+        file_name = "pars-c=%d-e=%d=l=%d-w_ls=%f-w_var=%f-n_train=%d" %(n_copies, n_ext, n_layers, w_ls, w_var, len(labels))
+    
+    def callback(x):
+        fvals.append(fval_cont[0])
+        print("Iteration: %d | Function value: %.8f" %(len(fvals), fval_cont[0]), end="\r")
+        if save_data == True:
+            np.save(file_name, x)
+        return None
+    
+    if method in ["Nelder-Mead", "L-BFGS-B", "SLSQP", "TNC", "Powell", "COBYLA"]:
+        bounds = [(0, pi)]*n_pars_ans + [(-10, 10)]*n_pars_est
+    else:
+        bounds = None
+    if x0 is None:
+        x0_ans = normal(pi, 0.01*pi, n_pars_ans)
+        x0_est = normal(0, 0.01, n_pars_est)
+        x0 = concatenate([x0_ans, x0_est])
+    
+    optimization_result = minimize(fun=fun, x0=x0, bounds=bounds, method=method, callback=callback, options=options) # "maxiter": int(1e10)
+
+    return fvals, optimization_result
+
+
+
+
+
+### old or unused stuff ###
+
+# def cx_old(n_qubits, q1, q2):
+#     """ Old and inefficient CX gate """
+#     cx_1 = reduce(kron, [eye(2**q1), P0, np.eye(2**(n_qubits-q1-1))])
+#     if q2 > q1:
+#         cx_2 = [eye(2**q1), P1, eye(2**(q2-q1-1)), X, eye(2**(n_qubits - q2 - 1))]
+#     else:
+#         cx_2 = [eye(2**q2), X, eye(2**(q1-q2-1)), P1, eye(2**(n_qubits - q1 - 1))]
+#     cx_2 = reduce(kron, cx_2)
+#     return cx_1 + cx_2
+
+
+# def measure_z(density_matrix, n_shots, n_est=1, outcomes=None, return_probs=False):
+#     """
+#     Measures Z^n in a given state with a given number of shots. Unfortunately, not faster.
+#     Input: density matrix, number of shots.
+#     Output: estimated expected value. 
+#     """
+    
+#     d = len(density_matrix)
+#     if outcomes is None:
+#         outcomes = [(-1)**j for j in range(d)]
+#     probs_dict = {outcomes[j]: 0 for j in range(d)} # dictionary with probabilities of a certain measuremet outcome
+#     probs = [] # probabilities
+#     probs_cum = [] # cumulative sum of probabilities
+#     prob_intervals = [] # probability intervals
+#     p_cum = 0 # auxiliary variable; must be equal to 1 at the end of the loop below
+#     for j in range(d):
+#         p = density_matrix[j][j].real # probability of the outcome j
+#         p_cum += p # this part may be optimized a bit for not obtaining one sum twice
+#         probs_dict[outcomes[j]] += p # store the probability
+#         probs.append(p)
+#         probs_cum.append(p_cum)
+#         prob_intervals.append( (p_cum, p_cum + p, outcomes[j]) ) # store the tripple (previous_probability, previous_probability + current_probability, projector's_binary_number)
+#     probs_cum = array(probs_cum)
+      
+#     if n_shots == inf:
+#         expec = 0
+#         for outcome, prob in probs_dict.items():
+#             expec += outcome * prob 
+#         return expec
+#     else:
+#         expecs = [] 
+#         ps = uniform(0, 1, (n_est, n_shots)) # generate the probabilities of obtaining a specific outcome
+#         for e in range(n_est):
+#             counts = {outcomes[j]: 0 for j in range(d)} # dict with counts of certain measuremet outcomes obtained in the 'experiment'
+#             for s in range(n_shots):
+#                 probs_cum_diffs = probs_cum - ps[e][s]
+#                 ind_min = np.abs(probs_cum_diffs).argmin()
+#                 if sign(probs_cum_diffs[ind_min]) == 1:
+#                     counts[outcomes[ind_min]] += 1
+#                 else:
+#                     counts[outcomes[ind_min + 1]] += 1
+#             expec = 0
+#             for outcome, count in counts.items():
+#                 expec += outcome * count
+#             expecs.append(expec/n_shots)
+#             # print(counts)
+
+#         if return_probs == True:
+#             return array(expecs), probs
+#         else:
+#             return array(expecs)
